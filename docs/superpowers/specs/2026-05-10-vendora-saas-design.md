@@ -13,7 +13,9 @@
 **One-liner:** "Seu SDR de IA. Encontra leads, escreve email personalizado, agenda reunião — enquanto você dorme."
 **Market:** Brazil (PT-BR), B2B SMB (10–200 employees) doing outbound without a dedicated SDR.
 **Initial verticals:** marketing agencies, B2B consultancies, SaaS startups.
-**Differentiation vs Apollo/Instantly:** PT-BR native UI + Claude prompts tuned for Brazilian business culture, Stripe BR billing, lower price point, founder-led support in Portuguese.
+**Differentiation vs Apollo/Instantly:** PT-BR native UI + LLM prompts tuned for Brazilian business culture, BRL billing, lower price point, founder-led support in Portuguese.
+
+**Cost constraint:** MVP must run on $0/month from founder's pocket. Only free-tier services and pay-from-revenue billing.
 
 ### Goals (MVP, 90 days post-launch)
 - 50+ signups
@@ -41,11 +43,11 @@
 3. User connects a Gmail account via Google OAuth (scopes: `gmail.send`, `gmail.readonly`).
 4. User uploads a CSV of leads (required cols: `email`, `full_name`; optional: `company`, `job_title`, `linkedin_url`, custom).
 5. User creates a campaign: name, choose Gmail account, choose lead segment, edit prompt template (default seeded from ICP + value prop).
-6. System generates a personalized email per lead via Claude Haiku 4.5 (background, Inngest).
+6. System generates a personalized email per lead via Gemini 2.0 Flash (background, Inngest).
 7. User reviews/edits each generated email in a per-message UI; can approve all or reject some.
 8. User clicks "Send campaign" → background worker sends through user's Gmail at rate ≤ 30/day per Gmail account, paced over the day.
 9. Tracking pixel embedded in each email logs opens.
-10. Reply detection (Gmail watch + push, with 15-min polling fallback) classifies replies (`interested | objection | not_now | unsubscribe | oof`) via Claude Sonnet 4.6 with summary; user notified in-app and via Resend transactional email.
+10. Reply detection (Gmail watch + push, with 15-min polling fallback) classifies replies (`interested | objection | not_now | unsubscribe | oof`) via Gemini 2.0 Flash with structured-output JSON schema; user notified in-app and via Resend transactional email.
 11. Dashboard shows per-campaign metrics: sent / open rate / reply rate / interested count, plus a global usage bar against plan quota.
 
 ---
@@ -61,7 +63,7 @@
 
 - **Trial:** 14-day Growth, no card required. After trial → Free unless upgraded.
 - **Quota enforcement:** `profiles.emails_sent_this_month` checked before enqueueing send job; resets monthly via Inngest cron.
-- **Currency:** BRL via Stripe BR. Card and Pix.
+- **Currency:** BRL via Lemon Squeezy (card; Pix added when Lemon Squeezy enables BR Pix or when migrating to Stripe BR with CNPJ post-launch).
 
 ---
 
@@ -90,30 +92,31 @@
 └─────────────────────────────────────────────────────────────┘
         │                    │                  │
         ▼                    ▼                  ▼
-┌──────────────┐    ┌──────────────┐   ┌─────────────┐
-│ Supabase     │    │ Inngest      │   │ Stripe      │
-│ - Postgres   │    │ Functions:   │   │ Billing     │
-│ - Auth       │    │ - generate-  │   │ (BR)        │
-│ - Storage    │    │   campaign-  │   │             │
-│ - RLS        │    │   emails     │   │             │
-│              │    │ - send-      │   │             │
-│              │    │   campaign   │   │             │
-│              │    │ - check-     │   │             │
-│              │    │   replies    │   │             │
-│              │    │ - reset-     │   │             │
-│              │    │   monthly-   │   │             │
-│              │    │   quota      │   │             │
-└──────────────┘    └──────────────┘   └─────────────┘
+┌──────────────┐    ┌──────────────┐   ┌──────────────┐
+│ Supabase     │    │ Inngest      │   │ Lemon Squeezy│
+│ - Postgres   │    │ Functions:   │   │ Billing      │
+│ - Auth       │    │ - generate-  │   │ (Merchant of │
+│ - Storage    │    │   campaign-  │   │  Record, BRL │
+│ - RLS        │    │   emails     │   │  supported)  │
+│              │    │ - send-      │   │              │
+│              │    │   campaign   │   │              │
+│              │    │ - check-     │   │              │
+│              │    │   replies    │   │              │
+│              │    │ - reset-     │   │              │
+│              │    │   monthly-   │   │              │
+│              │    │   quota      │   │              │
+└──────────────┘    └──────────────┘   └──────────────┘
                             │
         ┌───────────────────┼─────────────────┐
         ▼                   ▼                 ▼
 ┌──────────────┐   ┌──────────────┐  ┌──────────────┐
-│ Anthropic    │   │ Gmail API    │  │ Resend       │
-│ Claude API   │   │ (user OAuth) │  │ (app->user   │
-│ - Haiku 4.5  │   │              │  │  transac.    │
-│   (gen)      │   │              │  │  emails)     │
-│ - Sonnet 4.6 │   │              │  │              │
-│   (classify) │   │              │  │              │
+│ Google       │   │ Gmail API    │  │ Resend       │
+│ Gemini API   │   │ (user OAuth) │  │ (app->user   │
+│ - Flash 2.0  │   │              │  │  transac.    │
+│   (gen +     │   │              │  │  emails)     │
+│   classify)  │   │              │  │              │
+│ Free tier:   │   │              │  │              │
+│ 1500/day     │   │              │  │              │
 └──────────────┘   └──────────────┘  └──────────────┘
 ```
 
@@ -124,8 +127,8 @@
 | Frontend + API | Next.js 15 App Router + TypeScript + Tailwind + shadcn/ui | Single deploy, RSC speeds up dashboard, mature, beginner-friendly docs |
 | DB + Auth + Storage | Supabase | Postgres + Auth + Storage in one console, RLS for multi-tenancy, generous free tier |
 | Background jobs | Inngest | No Redis/worker infra, retry + observability built-in, free tier 50k steps/mo covers MVP |
-| Billing | Stripe (BR) | BRL + Pix support, well-documented, webhooks reliable |
-| LLM | Anthropic Claude API | Haiku 4.5 cheap for generation, Sonnet 4.6 strong for classification, prompt caching cuts cost |
+| Billing | Lemon Squeezy | Merchant of Record (handles Brazilian tax + invoicing without CNPJ), no upfront cost, 5% + $0.50 per sale only, BRL supported, webhooks reliable |
+| LLM | Google Gemini 2.0 Flash | Free tier 1500 req/day covers MVP, strong PT-BR, fast latency, Gemini Pro fallback if Flash insufficient for classification |
 | Email send (outbound campaigns) | User's Gmail via OAuth | Best deliverability, lands in inbox not spam folder |
 | Email send (transactional) | Resend | Simple SDK, free tier covers MVP volumes |
 | Hosting | Vercel | Zero-config Next.js deploy, free tier OK for MVP |
@@ -152,8 +155,8 @@ create table profiles (
   icp_definition text,
   value_proposition text,
   plan text not null default 'free' check (plan in ('free','starter','growth','scale')),
-  stripe_customer_id text unique,
-  stripe_subscription_id text unique,
+  billing_customer_id text unique,    -- Lemon Squeezy customer id (or Stripe id post-migration)
+  billing_subscription_id text unique, -- Lemon Squeezy subscription id
   emails_sent_this_month int not null default 0,
   trial_ends_at timestamptz,
   onboarding_completed_at timestamptz,
@@ -293,8 +296,8 @@ create policy "own_events" on events
 4. Inngest function `generate-campaign-emails`:
    - Fetches campaign + associated leads (via service role + explicit `user_id` filter).
    - Fans out one step per lead (with concurrency cap = 5).
-   - Each step: Claude Haiku 4.5 with prompt caching on the system + ICP + value prop block; user prompt = lead-specific data.
-   - Inserts into `campaign_messages` with `generated_subject`, `generated_body`, `generation_cost_cents`.
+   - Each step: Gemini 2.0 Flash with system instruction = static prompt; contents = ICP + value prop + lead-specific data block.
+   - Inserts into `campaign_messages` with `generated_subject`, `generated_body`, `generation_cost_cents` (always 0 while on free tier; tracks paid usage if upgraded).
    - On step failure: retry 3x; if still failing, insert message with `status='failed'` and error.
 5. Final step updates campaign `status='review'`, `generated_count`.
 6. Frontend revalidates via Supabase realtime subscription on the campaign row.
@@ -323,7 +326,7 @@ create policy "own_events" on events
 - Inngest cron every 15 min iterates `campaign_messages` with `status='sent'` and `replied_at IS NULL` and `sent_at > now() - 14 days`, calls `users.threads.get`, detects new inbound messages.
 
 **Classification:**
-- For each detected reply: send raw reply text + original email + ICP context to Claude Sonnet 4.6 with structured output (JSON schema: `classification`, `confidence`, `summary`).
+- For each detected reply: send raw reply text + original email + ICP context to Gemini 2.0 Flash with `responseMimeType: application/json` and JSON schema (`classification`, `confidence`, `summary`).
 - Update `campaign_messages` and `leads.status='replied'`.
 - Insert event. If `interested`, send transactional Resend email to user + in-app notification.
 
@@ -332,7 +335,7 @@ create policy "own_events" on events
 - `profiles.emails_sent_this_month` increments on each send.
 - Pre-send check rejects if increment would exceed plan cap.
 - Inngest cron `reset-monthly-quota` runs 00:05 UTC on day 1 of each month, zeroes counter.
-- Stripe webhook on `customer.subscription.updated/deleted` updates `profiles.plan`, `stripe_subscription_id`.
+- Lemon Squeezy webhook on `subscription_created`/`subscription_updated`/`subscription_cancelled` updates `profiles.plan`, `ls_subscription_id`. (Schema column `stripe_subscription_id` is repurposed and renamed to `subscription_id` in migration; `stripe_customer_id` likewise.)
 - Trial: on signup, set `trial_ends_at = now() + 14 days`, `plan='growth'`. Cron `expire-trials` daily downgrades expired trials with no subscription to `free`.
 
 ---
@@ -359,10 +362,10 @@ create policy "own_events" on events
 |---|---|---|
 | Gmail account suspended for spam | User loses primary inbox | Hard cap 30/day/account, gradual warmup recommendation, anti-spam copy lint, SPF/DKIM check at onboarding |
 | Reply false-positive (OOO classified as interested) | UX erosion | Few-shot examples in classifier prompt, confidence threshold, manual reclassify UI |
-| Anthropic cost overrun | Margin compression | Prompt caching on system+ICP block, Haiku for gen, hard cap per plan, daily cost alert via Sentry |
+| Gemini free-tier quota exhausted (1500 req/day) | Generation/classification stalls | Aggregate quota across all users; queue overflow into next day; alert via Sentry at 80%; upgrade to paid tier funded from MRR when consistently > 70% |
 | Vercel function timeout on LLM gen | UX failure | All LLM work in Inngest (off the request path), HTTP returns immediately with job ID |
 | LGPD complaint on lead data | Legal/reputational | Clear DPA, fast delete endpoint, sa-east-1 residency, audit log via `events` table |
-| Stripe BR onboarding friction | Revenue blocker | Validate Stripe BR account ready before launch; fallback to manual Pix invoicing for first 5 customers |
+| Lemon Squeezy account approval delay | Revenue blocker | Apply for LS account in week 1; if rejected, fall back to manual Pix QR + spreadsheet billing for first 5 customers; revisit Stripe BR with CNPJ post-launch |
 | User uploads 10k leads + crashes worker | Performance | CSV upload capped at 2k rows in MVP, progress indicator, batched insert with COPY |
 
 ---
@@ -376,7 +379,7 @@ create policy "own_events" on events
 | 3 | Leads + Gmail OAuth | CSV upload (≤2k rows) maps columns, dedupes by email, persists `leads`; Google OAuth flow connects Gmail account, encrypted tokens stored, `/leads` lists with pagination + search |
 | 4 | Email Generation | Create campaign UI; Inngest `generate-campaign-emails` produces personalized email per lead via Haiku 4.5; per-message review/edit UI |
 | 5 | Send + Tracking | `send-campaign` sends via user Gmail respecting daily cap with paced scheduling; tracking pixel records opens; campaign dashboard shows sent/open counts |
-| 6 | Reply Detection + Billing + Polish | Gmail push + polling fallback; Sonnet classification; Stripe checkout for 3 plans; webhook updates `profiles.plan`; quota enforcement; landing + pricing page; Sentry + PostHog wired |
+| 6 | Reply Detection + Billing + Polish | Gmail push + polling fallback; Gemini classification; Lemon Squeezy checkout for 3 plans; webhook updates `profiles.plan`; quota enforcement; landing + pricing page; Sentry + PostHog wired |
 
 ### Definition of Done (MVP)
 - All 6 milestones meet acceptance criteria.
@@ -424,17 +427,17 @@ create policy "own_events" on events
 
 ### 10.3 Unit Economics per Customer (Growth plan)
 - Revenue: R$ 497/mo
-- Anthropic cost (1.000 emails @ Haiku gen + ~30% reply classification with Sonnet, with caching): ~R$ 25/mo
-- Stripe fee (~3.99% + R$ 0.39): ~R$ 20
-- Allocated infra (Supabase + Vercel + Inngest amortized over 50 customers): ~R$ 15
-- **Gross margin per customer: ~88%**
+- LLM cost: R$ 0 while within Gemini free tier; ~R$ 15/mo per customer if upgraded to paid Gemini
+- Lemon Squeezy fee (5% + ~R$ 2.50): ~R$ 27
+- Allocated infra (Supabase Free + Vercel Hobby + Inngest Free amortized): ~R$ 0 until paid upgrades needed (~50 customers)
+- **Gross margin per customer (free tier): ~95%; (paid tier scenario): ~88%**
 
 ---
 
 ## 11. Open Questions (to resolve before or during implementation)
 
-1. **Stripe BR setup:** does the user already have a Stripe BR-enabled account with Pix? (Affects week 6.)
-2. **Domain:** which domain to register? `vendora.com.br` vs `getvendora.com` vs `vendora.app`. (Affects week 1 deploy DNS.)
+1. **Lemon Squeezy setup:** apply for LS merchant account week 1; approval typically 1-3 days. Backup billing path = manual Pix during MVP.
+2. **Domain:** MVP launches on free Vercel subdomain (`saas-sdr-xxx.vercel.app`); paid custom domain deferred until first revenue funds it.
 3. **Gmail Pub/Sub topic:** GCP project required for Gmail push. Set up early in week 6 or fall back to polling-only for MVP launch.
 4. **Free tier or paid trial only:** spec keeps both Free + 14-day trial. May simplify to one to reduce abuse.
 
